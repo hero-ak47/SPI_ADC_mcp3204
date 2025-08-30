@@ -21,7 +21,7 @@ architecture rtl of SPI_Master_MCP3204 is
     signal state_reg, state_next : state_type;
 
     -- shift reg cho 5 bit lệnh: 1(start) + 1(SGL) + 2(channel) + 1(dummy)
-    signal cmd_reg, cmd_next : std_logic_vector(4 downto 0); -- CH0
+    signal cmd_reg, cmd_next : std_logic; -- CH0
     signal cmd_cnt_reg, cmd_cnt_next : unsigned(4 downto 0);
     -- shift reg cho dữ liệu
     signal data_reg, data_next  : unsigned(11 downto 0) := (others=>'0');
@@ -47,7 +47,7 @@ begin
       if (rst = '1') then
          led_check <= '1';
          state_reg <= idle;
-         cmd_reg <= (others => '0');
+         cmd_reg <= '0';
          cmd_cnt_reg <= (others => '0');
          data_reg <= (others => '0');
          bit_cnt_reg <= (others => '0');
@@ -93,8 +93,7 @@ begin
                     cs_next   <= '1';
                     end if;
                     if start = '1' then
-                     --   cs_next   <= '0'; -- enable chip
-                        cmd_next  <= "11000"; -- đọc CH0
+                       -- cmd_next  <= '1'; -- đọc CH0
                         cmd_cnt_next  <=(others => '0');
                         state_next <= send_cmd;
                     end if;
@@ -105,12 +104,14 @@ begin
                     cs_next   <= '0';
                     end if;
                     if (sclk_prev='1' and sclk='0') then
-                        mosi_next <= cmd_next(4);
-                        cmd_next  <= cmd_next(3 downto 0) & '0';
-                        
-                        if cmd_cnt_reg = 5 then
-                            state_next <= recv_data;
-                            bit_cnt_next   <= (others => '0');
+                        mosi_next <= '1';
+                        --cmd_next  <= cmd_next(3 downto 0) & '0';                       
+                        if cmd_cnt_reg = 2 then
+                            if (sclk_prev='1' and sclk='0') then
+                                   mosi_next <= '0';
+                                   state_next <= recv_data;
+                                   bit_cnt_next   <= (others => '0');
+                             end if;      
                         else
                            cmd_cnt_next  <= cmd_cnt_reg + 1;    
                         end if;
@@ -118,16 +119,17 @@ begin
 
                 when recv_data =>
                     -- lấy MISO ở cạnh lên SCLK
-                    if (sclk_prev='0' and sclk='1') then
-                        if (bit_cnt_reg = 0 or bit_cnt_reg = 1 ) then
+                    if (sclk_prev='0' and sclk= '1') then
+                        if (bit_cnt_reg > 4 ) then
                             -- bỏ null bit
-                            null;
-                        else
+                          --  null;
+                        --else
                             data_next <= data_next(10 downto 0) & miso;
                         end if;
 
                        
-                        if bit_cnt_reg = 14 then
+                        if bit_cnt_reg = 16 then
+                           
                             state_next <= finish;
                         else
                             bit_cnt_next <= bit_cnt_reg + 1;    
@@ -136,8 +138,16 @@ begin
 
                 when finish =>
                      if ( sclk_prev='1' and sclk='0') then
-                        cs_next   <= '1';
-                        state_next <= idle;
+                        if bit_cnt_reg = 16 then
+                           -- if (sclk_prev='1' and sclk='0') then 
+                               data_o <= data_reg;
+                             --  end if;         
+                             cs_next   <= '1';
+                        state_next <= idle;               
+                        else
+                            bit_cnt_next <= bit_cnt_reg + 1;    
+                        end if;
+                        
                       end if;
 
             end case;
@@ -146,7 +156,7 @@ begin
     -- output
     mosi  <= mosi_reg;
     cs    <= cs_reg;
-    data_o <= data_reg;
+    --data_o <= data_reg;
     sclk_out <= sclk;
 
 end rtl;
